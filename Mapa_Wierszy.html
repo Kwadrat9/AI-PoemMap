@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa Wierszy</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0f0f14;
+  --panel: #16161e;
+  --panel-2: #1d1d28;
+  --border: #2a2a3a;
+  --text: #e8e8f0;
+  --muted: #8a8a9a;
+  --accent: #a855f7;
+  --accent-2: #06b6d4;
+  --danger: #ef4444;
+  --radius: 8px;
+}
+html, body { height: 100%; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg); color: var(--text);
+  overflow: hidden; font-size: 14px;
+}
+
+/* === LAYOUT === */
+.app { display: flex; height: 100vh; }
+.sidebar {
+  width: 360px; min-width: 360px;
+  background: var(--panel); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden; z-index: 10;
+}
+.map-area { flex: 1; position: relative; background: #0a0a10; overflow: hidden; }
+#map { width: 100%; height: 100%; display: block; cursor: grab; }
+#map:active { cursor: grabbing; }
+
+/* === SIDEBAR === */
+.sidebar-header {
+  padding: 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sidebar-header h1 {
+  font-size: 16px; font-weight: 700;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.sidebar-scroll { flex: 1; overflow-y: auto; padding: 16px; }
+.sidebar-scroll::-webkit-scrollbar { width: 8px; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.section-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--muted); margin: 4px 0 10px; font-weight: 600;
+}
+
+/* Form */
+form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+form label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+form input, form textarea, form select {
+  width: 100%; padding: 8px 10px;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-family: inherit; font-size: 13px; outline: none;
+  transition: border-color 0.15s;
+}
+form input:focus, form textarea:focus, form select:focus { border-color: var(--accent); }
+form textarea { resize: vertical; min-height: 70px; }
+form input[type="color"] { padding: 2px; height: 36px; cursor: pointer; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.form-actions { display: flex; gap: 8px; margin-top: 4px; }
+.form-actions button { flex: 1; padding: 9px; font-size: 13px; font-weight: 600; }
+
+button {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-family: inherit; cursor: pointer; transition: all 0.15s;
+}
+button:hover:not(:disabled) { background: var(--border); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: none; color: white; }
+button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+button.danger { color: var(--danger); border-color: var(--danger); }
+
+/* Image section */
+.image-section { display: flex; flex-direction: column; gap: 6px; }
+.drop-zone {
+  border: 1px dashed var(--border); border-radius: 6px;
+  padding: 10px; text-align: center; font-size: 12px; color: var(--muted);
+  cursor: pointer; transition: all 0.15s;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); color: var(--accent); background: rgba(168,85,247,0.05); }
+.preview-wrap { position: relative; display: none; }
+.preview-wrap.show { display: block; }
+.img-preview { width: 100%; max-height: 120px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+.btn-clear-image {
+  position: absolute; top: 4px; right: 4px;
+  width: 24px; height: 24px; padding: 0; font-size: 12px;
+  background: rgba(0,0,0,0.7); border: none; color: white; border-radius: 50%;
+}
+
+/* Poem list */
+.list-title-row { display: flex; justify-content: space-between; align-items: center; margin: 16px 0 10px; }
+.list-title-row .count { font-size: 11px; color: var(--muted); }
+.poem-list { display: flex; flex-direction: column; gap: 6px; }
+.poem-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px; background: var(--panel-2); border-radius: 8px;
+  border: 1px solid transparent; cursor: pointer;
+  transition: all 0.15s; position: relative;
+}
+.poem-card:hover { border-color: var(--border); }
+.poem-card.selected { border-color: var(--accent); background: rgba(168,85,247,0.08); }
+.poem-thumb {
+  width: 36px; height: 36px; border-radius: 6px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.poem-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.poem-info { flex: 1; min-width: 0; }
+.poem-title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poem-feeling { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poem-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
+.poem-card:hover .poem-actions, .poem-card.selected .poem-actions { opacity: 1; }
+.icon-btn {
+  width: 24px; height: 24px; padding: 0; font-size: 12px;
+  background: transparent; border: none; color: var(--muted);
+}
+.icon-btn:hover { background: var(--border); color: var(--text); }
+.empty { text-align: center; color: var(--muted); font-size: 12px; padding: 20px 0; }
+
+/* === MAP CONTROLS === */
+.map-controls {
+  position: absolute; top: 12px; right: 12px;
+  display: flex; flex-direction: column; gap: 6px; z-index: 5;
+}
+.map-controls button {
+  width: 36px; height: 36px; font-size: 16px;
+  background: var(--panel); border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.map-controls button.active { background: var(--accent); border-color: var(--accent); color: white; }
+.map-toolbar {
+  position: absolute; top: 12px; left: 12px;
+  display: flex; gap: 6px; z-index: 5;
+}
+.map-toolbar button {
+  padding: 8px 12px; font-size: 12px; font-weight: 600;
+  background: var(--panel); border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.map-toolbar button.active { background: var(--accent); border-color: var(--accent); color: white; }
+
+/* === SVG STYLES === */
+.poem { cursor: move; }
+.poem:hover rect { filter: drop-shadow(0 0 6px rgba(168,85,247,0.4)); }
+.poem.selected rect { stroke: #fff; stroke-width: 3; }
+.poem.connect-from rect { stroke: var(--accent-2); stroke-width: 3; }
+.cluster { cursor: move; }
+.cluster:hover rect { stroke-opacity: 1; }
+.connection { cursor: pointer; }
+.connection:hover line { opacity: 1; }
+
+/* === HAMBURGER / MOBILE === */
+.hamburger {
+  display: none; position: absolute; top: 12px; left: 12px;
+  width: 40px; height: 40px; font-size: 20px; z-index: 50;
+  background: var(--panel); border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6); z-index: 9;
+}
+.overlay.show { display: block; }
+
+@media (max-width: 900px) {
+  .sidebar {
+    position: fixed; top: 0; left: 0; height: 100vh;
+    width: 320px; min-width: 320px;
+    transform: translateX(-100%); transition: transform 0.25s;
+    z-index: 20;
+  }
+  .sidebar.open { transform: translateX(0); }
+  .hamburger { display: block; }
+  .map-toolbar { left: 60px; }
+}
+
+/* === TOASTS === */
+.toasts {
+  position: fixed; bottom: 20px; right: 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 1000; pointer-events: none;
+}
+.toast {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px; border-radius: 6px; font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  animation: slideIn 0.2s ease-out;
+}
+@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } }
+
+/* === CONTEXT MENU === */
+.ctx-menu {
+  position: fixed; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px; z-index: 1001;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  min-width: 140px;
+}
+.ctx-menu button {
+  display: block; width: 100%; text-align: left;
+  padding: 8px 12px; font-size: 13px;
+  background: transparent; border: none; border-radius: 4px;
+}
+.ctx-menu button:hover { background: var(--border); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- === SIDEBAR === -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1>Mapa Wierszy</h1>
+      <div style="display:flex;gap:4px;">
+        <button id="btn-export" class="icon-btn" title="Eksportuj JSON" style="opacity:1;width:auto;padding:0 8px;font-size:12px;">Eksport</button>
+        <button id="btn-import" class="icon-btn" title="Importuj JSON" style="opacity:1;width:auto;padding:0 8px;font-size:12px;">Import</button>
+      </div>
+    </div>
+    <div class="sidebar-scroll">
+      <div class="section-title">Nowy / edycja wiersza</div>
+      <form id="poem-form" autocomplete="off">
+        <div>
+          <label>Tytuł</label>
+          <input type="text" id="input-title" placeholder="Tytuł wiersza">
+        </div>
+        <div>
+          <label>Treść</label>
+          <textarea id="input-text" placeholder="Treść wiersza..."></textarea>
+        </div>
+        <div class="form-row">
+          <div><label>Muzyka</label><input type="text" id="input-music" placeholder="np. jazz"></div>
+          <div><label>Uczucie</label><input type="text" id="input-feeling" placeholder="np. melancholia"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Zapach</label><input type="text" id="input-smell" placeholder="np. deszcz"></div>
+          <div><label>Kolor</label><input type="color" id="input-color" value="#a855f7"></div>
+        </div>
+        <div>
+          <label>Klaster</label>
+          <select id="input-cluster"><option value="">— brak —</option></select>
+        </div>
+        <div class="image-section">
+          <label>Zdjęcie</label>
+          <input type="text" id="input-image" placeholder="URL zdjęcia">
+          <div class="drop-zone" id="drop-zone">Przeciągnij plik lub kliknij (max 2 MB)</div>
+          <input type="file" id="file-input" accept="image/*" hidden>
+          <div class="preview-wrap" id="preview-wrap">
+            <img class="img-preview" id="img-preview" alt="">
+            <button type="button" class="btn-clear-image" id="btn-clear-image" title="Usuń zdjęcie">✕</button>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" id="btn-add" class="primary">Dodaj wiersz</button>
+          <button type="button" id="btn-save">Zapisz zmiany</button>
+          <button type="button" id="btn-cancel">Anuluj</button>
+        </div>
+      </form>
+
+      <div class="list-title-row">
+        <div class="section-title" style="margin:0;">Wiersze</div>
+        <span class="count" id="list-count">0</span>
+      </div>
+      <div class="poem-list" id="poem-list"></div>
+    </div>
+  </aside>
+
+  <!-- === MAP === -->
+  <main class="map-area">
+    <button class="hamburger" id="hamburger">☰</button>
+    <div class="overlay" id="overlay"></div>
+    <svg id="map" xmlns="http://www.w3.org/2000/svg">
+      <g id="viewport">
+        <g id="layer-clusters"></g>
+        <g id="layer-connections"></g>
+        <g id="layer-poems"></g>
+      </g>
+    </svg>
+    <div class="map-toolbar">
+      <button id="btn-connect">Połącz</button>
+      <button id="btn-auto-link">Auto-link po tagu</button>
+      <button id="btn-new-cluster">+ Klaster</button>
+    </div>
+    <div class="map-controls">
+      <button id="btn-zoom-in" title="Przybliż">+</button>
+      <button id="btn-zoom-out" title="Oddal">−</button>
+      <button id="btn-reset-view" title="Reset widoku">⟲</button>
+    </div>
+  </main>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+// === KONSTANTY ===
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const STORAGE_KEY = 'poem-map-v1';
+const CURRENT_VERSION = 1;
+const POEM_W = 140, POEM_H = 90;
+
+// === STAN ===
+let state = loadState();
+let selectedId = null;
+let editingId = null;
+let connectMode = false;
+let connectFrom = null;
+let drag = null;
+let saveTimer = null;
+let ctxMenu = null;
+
+// === DOM ===
+const svg = document.getElementById('map');
+const viewport = document.getElementById('viewport');
+const layerClusters = document.getElementById('layer-clusters');
+const layerConnections = document.getElementById('layer-connections');
+const layerPoems = document.getElementById('layer-poems');
+const listEl = document.getElementById('poem-list');
+const listCount = document.getElementById('list-count');
+const formEl = document.getElementById('poem-form');
+const fTitle = document.getElementById('input-title');
+const fText = document.getElementById('input-text');
+const fMusic = document.getElementById('input-music');
+const fFeeling = document.getElementById('input-feeling');
+const fSmell = document.getElementById('input-smell');
+const fColor = document.getElementById('input-color');
+const fImage = document.getElementById('input-image');
+const fCluster = document.getElementById('input-cluster');
+const btnAdd = document.getElementById('btn-add');
+const btnSave = document.getElementById('btn-save');
+const btnCancel = document.getElementById('btn-cancel');
+const previewWrap = document.getElementById('preview-wrap');
+const imgPreview = document.getElementById('img-preview');
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const btnConnect = document.getElementById('btn-connect');
+
+// === PERSYSTENCJA ===
+function emptyState() {
+  return { version: CURRENT_VERSION, poems: [], clusters: [], connections: [], settings: { zoom: 1, panX: 0, panY: 0 } };
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return emptyState();
+    return migrate(JSON.parse(raw));
+  } catch (e) { return emptyState(); }
+}
+
+function migrate(data) {
+  if (!data || typeof data !== 'object') return emptyState();
+  if (!data.version) data.version = 1;
+  if (!Array.isArray(data.poems)) data.poems = [];
+  if (!Array.isArray(data.clusters)) data.clusters = [];
+  if (!Array.isArray(data.connections)) data.connections = [];
+  if (!data.settings || typeof data.settings !== 'object') data.settings = { zoom: 1, panX: 0, panY: 0 };
+  data.settings.zoom = data.settings.zoom || 1;
+  data.settings.panX = data.settings.panX || 0;
+  data.settings.panY = data.settings.panY || 0;
+  return data;
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    catch (e) { toast('Błąd zapisu — localStorage pełny?'); }
+  }, 300);
+}
+
+function saveNow() {
+  clearTimeout(saveTimer);
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+
+// === UTILS ===
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 2000);
+}
+
+function truncate(str, n) {
+  str = String(str || '');
+  return str.length > n ? str.slice(0, n - 1) + '…' : str;
+}
+
+function contrastColor(hex) {
+  if (!hex || !hex.startsWith('#')) return '#fff';
+  let h = hex.slice(1);
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  return lum > 140 ? '#0a0a10' : '#ffffff';
+}
+
+function centerOfView() {
+  const r = svg.getBoundingClientRect();
+  const { zoom, panX, panY } = state.settings;
+  return {
+    x: (r.width / 2 - panX) / zoom - POEM_W / 2,
+    y: (r.height / 2 - panY) / zoom - POEM_H / 2,
+  };
+}
+
+function screenToWorld(clientX, clientY) {
+  const r = svg.getBoundingClientRect();
+  const { zoom, panX, panY } = state.settings;
+  return {
+    x: (clientX - r.left - panX) / zoom,
+    y: (clientY - r.top - panY) / zoom,
+  };
+}
+
+// === TRANSFORM ===
+function applyTransform() {
+  const { zoom, panX, panY } = state.settings;
+  viewport.setAttribute('transform', `translate(${panX},${panY}) scale(${zoom})`);
+}
+
+// === RENDER: POEMS ===
+function renderPoems() {
+  layerPoems.innerHTML = '';
+  for (const p of state.poems) {
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('data-poem-id', p.id);
+    g.setAttribute('transform', `translate(${p.x},${p.y})`);
+    g.classList.add('poem');
+    if (p.id === selectedId) g.classList.add('selected');
+
+    const title = document.createElementNS(SVG_NS, 'title');
+    title.textContent = p.title || '(bez tytułu)';
+    g.appendChild(title);
+
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('width', POEM_W);
+    rect.setAttribute('height', POEM_H);
+    rect.setAttribute('rx', 8);
+    rect.setAttribute('fill', p.color || '#a855f7');
+    rect.setAttribute('stroke', 'rgba(0,0,0,0.3)');
+    rect.setAttribute('stroke-width', 1);
+    g.appendChild(rect);
+
+    const textColor = contrastColor(p.color || '#a855f7');
+
+    const t = document.createElementNS(SVG_NS, 'text');
+    t.setAttribute('x', 10);
+    t.setAttribute('y', 24);
+    t.setAttribute('fill', textColor);
+    t.setAttribute('font-size', 13);
+    t.setAttribute('font-weight', 600);
+    t.setAttribute('pointer-events', 'none');
+    t.textContent = truncate(p.title || '(bez tytułu)', 16);
+    g.appendChild(t);
+
+    if (p.feeling) {
+      const f = document.createElementNS(SVG_NS, 'text');
+      f.setAttribute('x', 10);
+      f.setAttribute('y', 42);
+      f.setAttribute('fill', textColor);
+      f.setAttribute('font-size', 11);
+      f.setAttribute('opacity', 0.75);
+      f.setAttribute('pointer-events', 'none');
+      f.textContent = truncate(p.feeling, 20);
+      g.appendChild(f);
+    }
+
+    if (p.image) {
+      const img = document.createElementNS(SVG_NS, 'image');
+      img.setAttribute('href', p.image);
+      img.setAttribute('x', POEM_W - 34);
+      img.setAttribute('y', POEM_H - 34);
+      img.setAttribute('width', 28);
+      img.setAttribute('height', 28);
+      img.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+      img.setAttribute('pointer-events', 'none');
+      img.setAttribute('clip-path', 'inset(0 round 4px)');
+      g.appendChild(img);
+    }
+
+    layerPoems.appendChild(g);
+  }
+}
+
+// === RENDER: CLUSTERS ===
+function renderClusters() {
+  layerClusters.innerHTML = '';
+  for (const c of state.clusters) {
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('data-cluster-id', c.id);
+    g.setAttribute('transform', `translate(${c.x},${c.y})`);
+    g.classList.add('cluster');
+
+    const w = c.w || 200, h = c.h || 150;
+
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('width', w);
+    rect.setAttribute('height', h);
+    rect.setAttribute('rx', 12);
+    rect.setAttribute('fill', c.color);
+    rect.setAttribute('fill-opacity', 0.12);
+    rect.setAttribute('stroke', c.color);
+    rect.setAttribute('stroke-width', 2);
+    rect.setAttribute('stroke-dasharray', '8 6');
+    rect.setAttribute('stroke-opacity', 0.6);
+    g.appendChild(rect);
+
+    const name = document.createElementNS(SVG_NS, 'text');
+    name.setAttribute('x', 12);
+    name.setAttribute('y', 22);
+    name.setAttribute('fill', c.color);
+    name.setAttribute('font-size', 14);
+    name.setAttribute('font-weight', 700);
+    name.setAttribute('pointer-events', 'none');
+    name.textContent = c.name;
+    g.appendChild(name);
+
+    layerClusters.appendChild(g);
+  }
+}
+
+// === RENDER: CONNECTIONS ===
+function renderConnections() {
+  layerConnections.innerHTML = '';
+  for (const c of state.connections) {
+    const a = state.poems.find(o => o.id === c.from);
+    const b = state.poems.find(o => o.id === c.to);
+    if (!a || !b) continue;
+
+    const x1 = a.x + POEM_W / 2, y1 = a.y + POEM_H / 2;
+    const x2 = b.x + POEM_W / 2, y2 = b.y + POEM_H / 2;
+
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('data-conn-id', c.id);
+    g.setAttribute('data-from', c.from);
+    g.setAttribute('data-to', c.to);
+    g.classList.add('connection');
+
+    // warstwa hit (gruba, przezroczysta)
+    const hit = document.createElementNS(SVG_NS, 'line');
+    hit.setAttribute('x1', x1); hit.setAttribute('y1', y1);
+    hit.setAttribute('x2', x2); hit.setAttribute('y2', y2);
+    hit.setAttribute('stroke', 'transparent');
+    hit.setAttribute('stroke-width', 14);
+    hit.setAttribute('pointer-events', 'stroke');
+    g.appendChild(hit);
+
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+    line.setAttribute('stroke', c.auto ? '#06b6d4' : '#a855f7');
+    line.setAttribute('stroke-width', 2);
+    line.setAttribute('stroke-opacity', 0.65);
+    line.setAttribute('pointer-events', 'none');
+    if (c.auto) line.setAttribute('stroke-dasharray', '6 5');
+    g.appendChild(line);
+
+    if (c.label) {
+      const t = document.createElementNS(SVG_NS, 'text');
+      t.setAttribute('x', (x1 + x2) / 2);
+      t.setAttribute('y', (y1 + y2) / 2 - 5);
+      t.setAttribute('fill', '#8a8a9a');
+      t.setAttribute('font-size', 10);
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('pointer-events', 'none');
+      const bg = document.createElementNS(SVG_NS, 'text');
+      bg.setAttribute('x', (x1 + x2) / 2);
+      bg.setAttribute('y', (y1 + y2) / 2 - 5);
+      bg.setAttribute('fill', '#0a0a10');
+      bg.setAttribute('font-size', 10);
+      bg.setAttribute('text-anchor', 'middle');
+      bg.setAttribute('stroke', '#0a0a10');
+      bg.setAttribute('stroke-width', 4);
+      bg.setAttribute('paint-order', 'stroke');
+      bg.setAttribute('pointer-events', 'none');
+      bg.textContent = c.label;
+      g.appendChild(bg);
+      t.textContent = c.label;
+      g.appendChild(t);
+    }
+
+    layerConnections.appendChild(g);
+  }
+}
+
+// === RENDER: LIST ===
+function renderList() {
+  listEl.innerHTML = '';
+  listCount.textContent = state.poems.length;
+  if (!state.poems.length) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = 'Brak wierszy. Dodaj pierwszy.';
+    listEl.appendChild(e);
+    return;
+  }
+  for (const p of state.poems) {
+    const card = document.createElement('div');
+    card.className = 'poem-card' + (p.id === selectedId ? ' selected' : '');
+    card.dataset.id = p.id;
+
+    const thumb = document.createElement('div');
+    thumb.className = 'poem-thumb';
+    thumb.style.background = p.color || '#a855f7';
+    if (p.image) {
+      const img = document.createElement('img');
+      img.src = p.image;
+      img.alt = '';
+      thumb.appendChild(img);
+    }
+    card.appendChild(thumb);
+
+    const info = document.createElement('div');
+    info.className = 'poem-info';
+    const t = document.createElement('div');
+    t.className = 'poem-title';
+    t.textContent = p.title || '(bez tytułu)';
+    const f = document.createElement('div');
+    f.className = 'poem-feeling';
+    f.textContent = p.feeling || '—';
+    info.appendChild(t);
+    info.appendChild(f);
+    card.appendChild(info);
+
+    const actions = document.createElement('div');
+    actions.className = 'poem-actions';
+    const eb = document.createElement('button');
+    eb.className = 'icon-btn'; eb.title = 'Edytuj'; eb.textContent = '✎';
+    eb.onclick = (ev) => { ev.stopPropagation(); startEdit(p.id); };
+    const db = document.createElement('button');
+    db.className = 'icon-btn'; db.title = 'Usuń'; db.textContent = '✕';
+    db.onclick = (ev) => { ev.stopPropagation(); deletePoem(p.id); };
+    actions.appendChild(eb);
+    actions.appendChild(db);
+    card.appendChild(actions);
+
+    card.onclick = () => selectPoem(p.id);
+    listEl.appendChild(card);
+  }
+}
+
+// === RENDER: FORM CLUSTER SELECT ===
+function renderFormClusters() {
+  const cur = fCluster.value;
+  fCluster.innerHTML = '<option value="">— brak —</option>';
+  for (const c of state.clusters) {
+    const o = document.createElement('option');
+    o.value = c.id;
+    o.textContent = c.name;
+    fCluster.appendChild(o);
+  }
+  if (cur && state.clusters.some(c => c.id === cur)) fCluster.value = cur;
+}
+
+function renderAll() {
+  renderPoems();
+  renderClusters();
+  renderConnections();
+  renderList();
+  renderFormClusters();
+  applyTransform();
+}
+
+// === SELECTION ===
+function selectPoem(id) {
+  selectedId = id;
+  layerPoems.querySelectorAll('.poem').forEach(el => {
+    el.classList.toggle('selected', el.dataset.poemId === id);
+  });
+  listEl.querySelectorAll('.poem-card').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === id);
+  });
+}
+
+// === FORM ===
+function getFormData() {
+  return {
+    title: fTitle.value.trim(),
+    text: fText.value,
+    music: fMusic.value.trim(),
+    feeling: fFeeling.value.trim(),
+    smell: fSmell.value.trim(),
+    color: fColor.value,
+    image: fImage.value.trim() || null,
+  };
+}
+
+function updateFormButtons() {
+  btnAdd.disabled = !!editingId;
+  btnSave.disabled = !editingId;
+  btnCancel.style.display = editingId ? '' : 'none';
+}
+
+function updateImagePreview() {
+  const url = fImage.value.trim();
+  if (url) {
+    imgPreview.src = url;
+    previewWrap.classList.add('show');
+  } else {
+    imgPreview.removeAttribute('src');
+    previewWrap.classList.remove('show');
+  }
+}
+
+function clearForm() {
+  formEl.reset();
+  fColor.value = '#a855f7';
+  fCluster.value = '';
+  updateImagePreview();
+  editingId = null;
+  updateFormButtons();
+}
+
+function addPoem() {
+  const data = getFormData();
+  if (!data.title && !data.text) { toast('Wpisz tytuł lub treść'); return; }
+  const center = centerOfView();
+  const offset = (state.poems.length % 5) * 20;
+  const poem = {
+    id: uid(),
+    ...data,
+    clusterId: null,
+    x: center.x + offset,
+    y: center.y + offset,
+    createdAt: new Date().toISOString(),
+  };
+  const cid = fCluster.value;
+  if (cid) {
+    const cluster = state.clusters.find(c => c.id === cid);
+    if (cluster) snapIntoCluster(poem, cluster);
+  }
+  state.poems.push(poem);
+  clearForm();
+  scheduleSave();
+  renderAll();
+  selectPoem(poem.id);
+  toast('Dodano wiersz');
+}
+
+function saveChanges() {
+  if (!editingId) return;
+  const p = state.poems.find(o => o.id === editingId);
+  if (!p) return;
+  const data = getFormData();
+  Object.assign(p, data);
+  const cid = fCluster.value || null;
+  if (cid !== p.clusterId) {
+    if (cid) {
+      const cluster = state.clusters.find(c => c.id === cid);
+      if (cluster) snapIntoCluster(p, cluster);
+    } else {
+      p.clusterId = null;
+    }
+  }
+  editingId = null;
+  clearForm();
+  scheduleSave();
+  renderAll();
+  selectPoem(p.id);
+  toast('Zapisano zmiany');
+}
+
+function startEdit(id) {
+  const p = state.poems.find(o => o.id === id);
+  if (!p) return;
+  editingId = id;
+  fTitle.value = p.title || '';
+  fText.value = p.text || '';
+  fMusic.value = p.music || '';
+  fFeeling.value = p.feeling || '';
+  fSmell.value = p.smell || '';
+  fColor.value = (p.color && p.color.startsWith('#')) ? p.color : '#a855f7';
+  fImage.value = p.image || '';
+  fCluster.value = p.clusterId || '';
+  updateImagePreview();
+  updateFormButtons();
+  selectPoem(id);
+  fTitle.focus();
+}
+
+function deletePoem(id) {
+  if (!confirm('Usunąć wiersz?')) return;
+  state.poems = state.poems.filter(p => p.id !== id);
+  state.connections = state.connections.filter(c => c.from !== id && c.to !== id);
+  if (selectedId === id) selectedId = null;
+  if (editingId === id) clearForm();
+  scheduleSave();
+  renderAll();
+  toast('Usunięto wiersz');
+}
+
+// === KLASTry ===
+function snapIntoCluster(poem, cluster) {
+  poem.clusterId = cluster.id;
+  const existing = state.poems.filter(p => p.clusterId === cluster.id && p.id !== poem.id);
+  const w = cluster.w || 200;
+  const cols = Math.max(1, Math.floor((w - 20) / (POEM_W + 10)));
+  const idx = existing.length;
+  const col = idx % cols;
+  const row = Math.floor(idx / cols);
+  poem.x = cluster.x + 10 + col * (POEM_W + 10);
+  poem.y = cluster.y + 30 + row * (POEM_H + 10);
+  const neededW = 10 + (col + 1) * (POEM_W + 10);
+  const neededH = 30 + (row + 1) * (POEM_H + 10);
+  if (neededW > cluster.w) cluster.w = neededW;
+  if (neededH > cluster.h) cluster.h = neededH;
+}
+
+function findClusterAt(x, y) {
+  for (let i = state.clusters.length - 1; i >= 0; i--) {
+    const c = state.clusters[i];
+    const w = c.w || 200, h = c.h || 150;
+    if (x >= c.x && x <= c.x + w && y >= c.y && y <= c.y + h) return c;
+  }
+  return null;
+}
+
+function createCluster() {
+  const name = prompt('Nazwa klastra:');
+  if (!name) return;
+  const palette = ['#a855f7', '#06b6d4', '#ec4899', '#22c55e', '#f59e0b', '#3b82f6', '#ef4444', '#14b8a6'];
+  const color = palette[state.clusters.length % palette.length];
+  const c = centerOfView();
+  state.clusters.push({
+    id: uid(), name, color,
+    x: c.x - 100, y: c.y - 75,
+    w: 200, h: 150,
+  });
+  scheduleSave();
+  renderAll();
+  toast('Klaster dodany');
+}
+
+function deleteCluster(id) {
+  const c = state.clusters.find(o => o.id === id);
+  if (!c) return;
+  if (!confirm(`Usunąć klaster "${c.name}"? Wiersze pozostaną na mapie.`)) return;
+  state.clusters = state.clusters.filter(o => o.id !== id);
+  state.poems.forEach(p => { if (p.clusterId === id) p.clusterId = null; });
+  scheduleSave();
+  renderAll();
+  toast('Usunięto klaster');
+}
+
+// === DRAG & PAN ===
+function startDrag(type, id, e) {
+  const { zoom } = state.settings;
+  if (type === 'pan') {
+    drag = { type: 'pan', startX: e.clientX, startY: e.clientY, origPanX: state.settings.panX, origPanY: state.settings.panY, moved: false };
+  } else if (type === 'poem') {
+    const p = state.poems.find(o => o.id === id);
+    if (!p) return;
+    drag = { type, id, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y, moved: false, zoom };
+  } else if (type === 'cluster') {
+    const c = state.clusters.find(o => o.id === id);
+    if (!c) return;
+    drag = { type, id, startX: e.clientX, startY: e.clientY, origX: c.x, origY: c.y, moved: false, zoom };
+  }
+  e.preventDefault();
+}
+
+function updatePoemPosition(id, x, y) {
+  const p = state.poems.find(o => o.id === id);
+  if (!p) return;
+  p.x = x; p.y = y;
+  const el = layerPoems.querySelector(`[data-poem-id="${id}"]`);
+  if (el) el.setAttribute('transform', `translate(${x},${y})`);
+  updateConnectionsFor(id);
+  scheduleSave();
+}
+
+function updateClusterPosition(id, x, y) {
+  const c = state.clusters.find(o => o.id === id);
+  if (!c) return;
+  const dx = x - c.x, dy = y - c.y;
+  c.x = x; c.y = y;
+  const el = layerClusters.querySelector(`[data-cluster-id="${id}"]`);
+  if (el) el.setAttribute('transform', `translate(${x},${y})`);
+  for (const p of state.poems.filter(o => o.clusterId === id)) {
+    p.x += dx; p.y += dy;
+    const pe = layerPoems.querySelector(`[data-poem-id="${p.id}"]`);
+    if (pe) pe.setAttribute('transform', `translate(${p.x},${p.y})`);
+    updateConnectionsFor(p.id);
+  }
+  scheduleSave();
+}
+
+function updateConnectionsFor(poemId) {
+  const p = state.poems.find(o => o.id === poemId);
+  if (!p) return;
+  const cx = p.x + POEM_W / 2, cy = p.y + POEM_H / 2;
+  layerConnections.querySelectorAll(`[data-from="${poemId}"], [data-to="${poemId}"]`).forEach(g => {
+    const a = state.poems.find(o => o.id === g.dataset.from);
+    const b = state.poems.find(o => o.id === g.dataset.to);
+    if (!a || !b) return;
+    const x1 = a.x + POEM_W / 2, y1 = a.y + POEM_H / 2;
+    const x2 = b.x + POEM_W / 2, y2 = b.y + POEM_H / 2;
+    g.querySelectorAll('line').forEach(l => {
+      l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+      l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+    });
+    g.querySelectorAll('text').forEach(t => {
+      t.setAttribute('x', (x1 + x2) / 2);
+      t.setAttribute('y', (y1 + y2) / 2 - 5);
+    });
+  });
+}
+
+// === MOUSE EVENTS ===
+svg.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  const poemG = e.target.closest('[data-poem-id]');
+  const clusterG = e.target.closest('[data-cluster-id]');
+  const connG = e.target.closest('[data-conn-id]');
+  if (connG) return;
+  if (poemG && !connectMode) {
+    startDrag('poem', poemG.dataset.poemId, e);
+  } else if (clusterG && !connectMode) {
+    startDrag('cluster', clusterG.dataset.clusterId, e);
+  } else {
+    startDrag('pan', null, e);
+  }
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.startX;
+  const dy = e.clientY - drag.startY;
+  if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+  drag.moved = true;
+  if (drag.type === 'pan') {
+    state.settings.panX = drag.origPanX + dx;
+    state.settings.panY = drag.origPanY + dy;
+    applyTransform();
+  } else if (drag.type === 'poem') {
+    updatePoemPosition(drag.id, drag.origX + dx / drag.zoom, drag.origY + dy / drag.zoom);
+  } else if (drag.type === 'cluster') {
+    updateClusterPosition(drag.id, drag.origX + dx / drag.zoom, drag.origY + dy / drag.zoom);
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  if (d.type === 'pan') {
+    if (!d.moved) selectPoem(null);
+    else scheduleSave();
+    return;
+  }
+  if (!d.moved) {
+    if (d.type === 'poem') {
+      if (connectMode) handleConnectClick(d.id);
+      else selectPoem(d.id);
+    }
+    return;
+  }
+  // Drag end — sprawdź drop do klastra
+  if (d.type === 'poem') {
+    const p = state.poems.find(o => o.id === d.id);
+    if (p) {
+      const cx = p.x + POEM_W / 2, cy = p.y + POEM_H / 2;
+      const cluster = findClusterAt(cx, cy);
+      if (cluster && cluster.id !== p.clusterId) {
+        snapIntoCluster(p, cluster);
+        renderAll();
+        selectPoem(p.id);
+      } else if (!cluster && p.clusterId) {
+        p.clusterId = null;
+        renderAll();
+        selectPoem(p.id);
+      }
+    }
+  } else if (d.type === 'cluster') {
+    scheduleSave();
+  }
+});
+
+svg.addEventListener('dblclick', (e) => {
+  const poemG = e.target.closest('[data-poem-id]');
+  if (poemG) startEdit(poemG.dataset.poemId);
+});
+
+// === CONTEXT MENU ===
+function showCtxMenu(x, y, items) {
+  hideCtxMenu();
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.style.left = Math.min(x, window.innerWidth - 160) + 'px';
+  menu.style.top = Math.min(y, window.innerHeight - 60) + 'px';
+  for (const item of items) {
+    const b = document.createElement('button');
+    b.textContent = item.label;
+    if (item.danger) b.classList.add('danger');
+    b.onclick = () => { hideCtxMenu(); item.action(); };
+    menu.appendChild(b);
+  }
+  document.body.appendChild(menu);
+  ctxMenu = menu;
+  setTimeout(() => document.addEventListener('mousedown', hideCtxMenu, { once: true }), 0);
+}
+
+function hideCtxMenu() {
+  if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; }
+}
+
+svg.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const poemG = e.target.closest('[data-poem-id]');
+  const clusterG = e.target.closest('[data-cluster-id]');
+  const connG = e.target.closest('[data-conn-id]');
+
+  if (poemG) {
+    const id = poemG.dataset.poemId;
+    const p = state.poems.find(o => o.id === id);
+    if (!p) return;
+    const items = [{ label: 'Edytuj', action: () => startEdit(id) }];
+    if (p.clusterId) {
+      items.push({
+        label: 'Wyjmij z klastra',
+        action: () => { p.clusterId = null; scheduleSave(); renderAll(); }
+      });
+    }
+    items.push({ label: 'Usuń', danger: true, action: () => deletePoem(id) });
+    showCtxMenu(e.clientX, e.clientY, items);
+  } else if (clusterG) {
+    const id = clusterG.dataset.clusterId;
+    const c = state.clusters.find(o => o.id === id);
+    if (!c) return;
+    showCtxMenu(e.clientX, e.clientY, [
+      {
+        label: 'Zmień nazwę',
+        action: () => {
+          const name = prompt('Nowa nazwa:', c.name);
+          if (name && name.trim()) { c.name = name.trim(); scheduleSave(); renderAll(); }
+        }
+      },
+      { label: 'Usuń klaster', danger: true, action: () => deleteCluster(id) }
+    ]);
+  } else if (connG) {
+    const id = connG.dataset.connId;
+    showCtxMenu(e.clientX, e.clientY, [
+      {
+        label: 'Usuń połączenie',
+        danger: true,
+        action: () => {
+          if (!confirm('Usunąć połączenie?')) return;
+          state.connections = state.connections.filter(o => o.id !== id);
+          scheduleSave();
+          renderAll();
+          toast('Usunięto połączenie');
+        }
+      }
+    ]);
+  }
+});
+
+// === CONNECT MODE ===
+function toggleConnectMode() {
+  connectMode = !connectMode;
+  btnConnect.classList.toggle('active', connectMode);
+  connectFrom = null;
+  updateConnectFromHighlight();
+}
+
+function updateConnectFromHighlight() {
+  layerPoems.querySelectorAll('.poem').forEach(el => {
+    el.classList.toggle('connect-from', el.dataset.poemId === connectFrom);
+  });
+}
+
+function handleConnectClick(poemId) {
+  if (!connectFrom) {
+    connectFrom = poemId;
+    updateConnectFromHighlight();
+    toast('Kliknij drugi wiersz');
+    return;
+  }
+  if (connectFrom === poemId) {
+    connectFrom = null;
+    updateConnectFromHighlight();
+    return;
+  }
+  const label = prompt('Etykieta połączenia (opcjonalnie):') || null;
+  state.connections.push({
+    id: uid(),
+    from: connectFrom,
+    to: poemId,
+    label: label && label.trim() ? label.trim() : null,
+    auto: false,
+  });
+  connectFrom = null;
+  updateConnectFromHighlight();
+  scheduleSave();
+  renderAll();
+  toast('Połączono');
+}
+
+// Capture-phase: wyłapujemy klik w wiersz PRZED handlerem drag/pan na <svg>
+document.addEventListener('mousedown', (e) => {
+  if (!connectMode || e.button !== 0) return;
+  const t = e.target;
+  if (!t || !t.closest) return;
+  const poemG = t.closest('[data-poem-id]');
+  if (!poemG) return;
+  e.stopPropagation();
+  e.preventDefault();
+  handleConnectClick(poemG.dataset.poemId);
+}, true);
+
+// === AUTO-LINK ===
+function autoLinkByTag() {
+  let added = 0;
+  const seen = new Set();
+  const addPair = (aId, bId, label) => {
+    if (aId === bId) return;
+    const key = [aId, bId].sort().join('|');
+    if (seen.has(key)) return;
+    if (state.connections.some(c =>
+      (c.from === aId && c.to === bId) || (c.from === bId && c.to === aId))) return;
+    seen.add(key);
+    state.connections.push({ id: uid(), from: aId, to: bId, label, auto: true });
+    added++;
+  };
+  for (let i = 0; i < state.poems.length; i++) {
+    for (let j = i + 1; j < state.poems.length; j++) {
+      const a = state.poems[i], b = state.poems[j];
+      if (a.feeling && a.feeling === b.feeling) addPair(a.id, b.id, 'uczucie: ' + a.feeling);
+      else if (a.smell && a.smell === b.smell) addPair(a.id, b.id, 'zapach: ' + a.smell);
+    }
+  }
+  if (added === 0) { toast('Brak nowych połączeń'); return; }
+  scheduleSave();
+  renderAll();
+  toast(`Dodano ${added} ${added === 1 ? 'połączenie' : 'połączeń'}`);
+}
+
+// === ZOOM ===
+function zoomAt(factor, clientX, clientY) {
+  const s = state.settings;
+  const newZoom = Math.max(0.2, Math.min(3, s.zoom * factor));
+  if (newZoom === s.zoom) return;
+  const r = svg.getBoundingClientRect();
+  const px = clientX !== undefined ? clientX - r.left : r.width / 2;
+  const py = clientY !== undefined ? clientY - r.top : r.height / 2;
+  const wx = (px - s.panX) / s.zoom;
+  const wy = (py - s.panY) / s.zoom;
+  s.zoom = newZoom;
+  s.panX = px - wx * newZoom;
+  s.panY = py - wy * newZoom;
+  applyTransform();
+  scheduleSave();
+}
+
+svg.addEventListener('wheel', (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
+}, { passive: false });
+
+// === FORM EVENTS ===
+btnAdd.addEventListener('click', addPoem);
+btnSave.addEventListener('click', saveChanges);
+btnCancel.addEventListener('click', () => clearForm());
+
+fImage.addEventListener('input', updateImagePreview);
+
+document.getElementById('btn-clear-image').addEventListener('click', () => {
+  fImage.value = '';
+  updateImagePreview();
+});
+
+// === IMAGE DROP ===
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  if (fileInput.files && fileInput.files[0]) handleImageFile(fileInput.files[0]);
+  fileInput.value = '';
+});
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) handleImageFile(f);
+});
+
+function handleImageFile(file) {
+  if (!file.type.startsWith('image/')) { toast('To nie jest plik obrazu'); return; }
+  if (file.size > 2 * 1024 * 1024) { toast('Plik za duży (limit 2 MB)'); return; }
+  const r = new FileReader();
+  r.onload = () => {
+    fImage.value = r.result;
+    updateImagePreview();
+  };
+  r.readAsDataURL(file);
+}
+
+// === MAP TOOLBAR ===
+btnConnect.addEventListener('click', toggleConnectMode);
+document.getElementById('btn-auto-link').addEventListener('click', autoLinkByTag);
+document.getElementById('btn-new-cluster').addEventListener('click', createCluster);
+
+// === MAP CONTROLS ===
+document.getElementById('btn-zoom-in').addEventListener('click', () => zoomAt(1.2));
+document.getElementById('btn-zoom-out').addEventListener('click', () => zoomAt(1 / 1.2));
+document.getElementById('btn-reset-view').addEventListener('click', () => {
+  state.settings = { zoom: 1, panX: 0, panY: 0 };
+  applyTransform();
+  scheduleSave();
+});
+
+// === EXPORT / IMPORT ===
+document.getElementById('btn-export').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'poem-map-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('Wyeksportowano');
+});
+
+document.getElementById('btn-import').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = () => {
+    const f = input.files && input.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const data = JSON.parse(r.result);
+        if (!data || !Array.isArray(data.poems) || !Array.isArray(data.clusters)) {
+          toast('Nieprawidłowy plik JSON');
+          return;
+        }
+        if (state.poems.length && !confirm('Nadpisać obecne dane importem?')) return;
+        state = migrate(data);
+        selectedId = null;
+        editingId = null;
+        clearForm();
+        scheduleSave();
+        renderAll();
+        toast('Zaimportowano dane');
+      } catch (err) {
+        toast('Błąd importu: ' + err.message);
+      }
+    };
+    r.readAsText(f);
+  };
+  input.click();
+});
+
+// === MOBILE SIDEBAR ===
+const sidebarEl = document.getElementById('sidebar');
+const overlayEl = document.getElementById('overlay');
+document.getElementById('hamburger').addEventListener('click', () => {
+  sidebarEl.classList.toggle('open');
+  overlayEl.classList.toggle('show');
+});
+overlayEl.addEventListener('click', () => {
+  sidebarEl.classList.remove('open');
+  overlayEl.classList.remove('show');
+});
+
+// === KEYBOARD ===
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (ctxMenu) { hideCtxMenu(); return; }
+  if (connectFrom) { connectFrom = null; updateConnectFromHighlight(); return; }
+  if (connectMode) { toggleConnectMode(); return; }
+  if (editingId) { clearForm(); return; }
+  if (selectedId) { selectPoem(null); return; }
+});
+
+// === INIT ===
+applyTransform();
+renderAll();
+updateFormButtons();
+updateImagePreview();
+</script>
+</body>
+</html>
